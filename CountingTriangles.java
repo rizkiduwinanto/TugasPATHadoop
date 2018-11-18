@@ -44,7 +44,6 @@ public class CountingTriangles {
     private IntWritable result = new IntWritable();
 
     public void reduce(Text key, Iterable<IntWritable> values, Context context) throws IOException, InterruptedException {
-      List<Integer> valueList = new ArrayList<Integer>(); 
       for (IntWritable val : values) {
         valueList.add(val.get());
       }
@@ -53,9 +52,13 @@ public class CountingTriangles {
         for (int j = 0; j < valueList.size(); j++) {
           int val1 = valueList.get(i);
           int val2 = valueList.get(j);
-          int[] valuesArray = {val1, val2};
-          Arrays.sort(valuesArray);
-          Text output = new Text(Integer.toString(val1)+","+Integer.toString(val2));
+
+          if (val1 < val2) {
+            Text output = new Text(Integer.toString(val1)+","+Integer.toString(val2)) ;
+          } else {
+            Text output = new Text(Integer.toString(val2)+","+Integer.toString(val1));
+          }
+
           IntWritable outputKey = new IntWritable(Integer.parseInt(key.toString()));
           context.write(output, outputKey);
         }
@@ -88,11 +91,11 @@ public class CountingTriangles {
     }
   }
 
-  public static class CountTriangleReducer2 extends Reducer<Text,IntWritable,Text,IntWritable> {
+  public static class CountTriangleReducer2 extends Reducer<Text, IntWritable, Text, LongWritable> {
 
     public void reduce(Text key, Iterable<IntWritable> values, Context context) throws IOException, InterruptedException {
-      int count0 = 0;
-      int count1 = 0;
+      long count0 = 0;
+      long count1 = 0;
       for (IntWritable value : values){
         if (value.get() == 0) {
           count0++;
@@ -101,8 +104,27 @@ public class CountingTriangles {
         }
       }
 
-      IntWritable result = new IntWritable(count0 > 0 ? count1 : 0);
+      LongWritable result = new LongWritable(count0 > 0 ? count1 : 0);
       context.write(key, result);
+    }
+  }
+
+  public static class AggregateReducer
+    extends Reducer<Text, LongWritable, Text, LongWritable> {
+
+    public void reduce(Text key, Iterable<LongWritable> values,
+        Context context) throws IOException, InterruptedException {
+    
+      long sum = 0;
+      Iterator<LongWritable> itr = values.iterator();
+
+      while (itr.hasNext()) {
+        Long value = itr.next().get();
+        sum += value;
+      }
+
+      context.write(key, new LongWritable(sum));
+        
     }
   }
 
@@ -128,7 +150,17 @@ public class CountingTriangles {
     job2.setReducerClass(CountTriangleReducer2.class);
     job2.setOutputKeyClass(Text.class);
     job2.setOutputValueClass(IntWritable.class);
+
+    job2.waitForCompletion(true);
+
+    Job job3 = Job.getInstance(conf, "Aggregate Result - Royyan For K3M");
+    job3.setJarByClass(CountingTriangles.class);
+    FileInputFormat.addInputPath(job3,	new Path(args[1]+"/2"));
+    FileOutputFormat.setOutputPath(job3, new Path(args[2]+"/result"));
+    job3.setReducerClass(AggregateReducer.class);
+    job3.setOutputKeyClass(Text.class);
+    job3.setOutputValueClass(IntWritable.class);
     
-    System.exit(job2.waitForCompletion(true) ? 0 : 1);
+    System.exit(job3.waitForCompletion(true) ? 0 : 1);
   }
 }
